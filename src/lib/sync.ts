@@ -66,13 +66,26 @@ interface LayoutMessage {
   instances: Instance[]
 }
 
-export function createSync(options: SyncOptions): SyncHandle | null {
-  if (!SYNC_CONFIGURED) return null
+/**
+ * One client for the life of the page. Creating one per connection means two
+ * live at once whenever the effect re-runs (React StrictMode does this in
+ * development), which Supabase warns about and which leaves an orphaned auth
+ * client behind each time.
+ */
+let sharedClient: SupabaseClient | null = null
 
-  const client: SupabaseClient = createClient(URL!, KEY!, {
+function getClient(): SupabaseClient {
+  sharedClient ??= createClient(URL!, KEY!, {
     auth: { persistSession: false },
     realtime: { params: { eventsPerSecond: 30 } },
   })
+  return sharedClient
+}
+
+export function createSync(options: SyncOptions): SyncHandle | null {
+  if (!SYNC_CONFIGURED) return null
+
+  const client = getClient()
 
   // Identifies this tab so its own broadcasts can be ignored on the way back.
   const self = crypto.randomUUID?.() ?? String(Math.random()).slice(2)
