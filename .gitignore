@@ -1,0 +1,11 @@
+node_modules/
+dist/
+
+# Supabase credentials live here and must never be committed. The publishable
+# key is safe in the built page, but keeping it out of git means rotating it
+# doesn't require rewriting history.
+.env
+.env.local
+.env.*.local
+
+*.log

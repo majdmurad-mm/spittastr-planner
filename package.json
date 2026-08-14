@@ -1,0 +1,32 @@
+{
+  "name": "spittastr-planner",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "extract": "node scripts/extract.mjs",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:share": "npm run build && node scripts/build-artifact.mjs",
+    "snapshot": "node scripts/snapshot.mjs",
+    "deploy": "npm run build:share && node scripts/publish-pages.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.58.0",
+    "konva": "^9.3.16",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-konva": "^18.2.10",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "rhino3dm": "^8.4.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
