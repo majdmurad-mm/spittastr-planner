@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import { reconcileWithCatalog } from './plan'
 import { resolveRoom } from './room'
 import { createSync } from './sync'
 import { syncBridge } from './syncBridge'
@@ -23,8 +24,13 @@ export function useSync() {
       roomId: room.id,
       name: store.displayName || 'Someone',
       getLayout: () => useStore.getState().instances,
+      // Layouts arriving from the database or the other person may predate a
+      // piece being added to the catalog. Reconciling is idempotent — the
+      // seeded id is deterministic — so it is safe to run on every message.
       onLayout: (instances) =>
-        syncBridge.asRemote(() => useStore.getState().applyRemoteLayout(instances)),
+        syncBridge.asRemote(() =>
+          useStore.getState().applyRemoteLayout(reconcileWithCatalog(instances)),
+        ),
       onPiece: (id, position, rotation) =>
         syncBridge.asRemote(() => useStore.getState().applyRemotePiece(id, position, rotation)),
       onState: (state, detail) => useStore.getState().setSyncState(state, detail),

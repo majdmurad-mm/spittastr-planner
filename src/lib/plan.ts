@@ -92,3 +92,21 @@ export function instanceFrom(def: CatalogItem, overrides: Partial<Instance> = {}
 export function initialInstances(): Instance[] {
   return plan.catalog.map((c) => instanceFrom(c))
 }
+
+/**
+ * Add any catalog pieces the stored layout doesn't know about.
+ *
+ * A saved layout — in the database, in a share link, in local autosave — is a
+ * fixed list of instances. Without this, furniture added to the CAD model after
+ * a room was created would never appear in that room.
+ *
+ * The seeded id is derived from the catalog id rather than random, so if both
+ * people load at the same moment they generate the *same* instance rather than
+ * two copies of the new piece. Re-running is therefore harmless.
+ */
+export function reconcileWithCatalog(instances: Instance[]): Instance[] {
+  const known = new Set(instances.map((i) => i.defId))
+  const missing = plan.catalog.filter((c) => !known.has(c.id))
+  if (!missing.length) return instances
+  return [...instances, ...missing.map((c) => instanceFrom(c, { id: `${c.id}#seed` }))]
+}

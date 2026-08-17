@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 
 import type { Instance, Owner, Pt, SavedLayout } from './types'
-import { initialInstances, instanceFrom, newInstanceId, plan } from './lib/plan'
+import {
+  initialInstances,
+  instanceFrom,
+  newInstanceId,
+  plan,
+  reconcileWithCatalog,
+} from './lib/plan'
 import { layoutFromUrl } from './lib/share'
 import { storage } from './lib/storage'
 import { SYNC_CONFIGURED, type Peer, type SyncState } from './lib/sync'
@@ -33,7 +39,9 @@ function loadLayouts(): SavedLayout[] {
  * the arrangement they were sent, not whatever they last dragged around.
  */
 function startingInstances(): Instance[] {
-  return layoutFromUrl() ?? loadAutosave() ?? initialInstances()
+  const stored = layoutFromUrl() ?? loadAutosave()
+  // A layout saved before a piece existed must still gain that piece.
+  return stored ? reconcileWithCatalog(stored) : initialInstances()
 }
 
 interface State {

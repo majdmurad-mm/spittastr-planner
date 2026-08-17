@@ -10,6 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { read as readRhino } from './readers/rhino3dm-reader.mjs'
+import { read as readDwg } from './readers/libredwg-reader.mjs'
 import { computeInterior } from './interior.mjs'
 import {
   LAURA_FURNITURE,
@@ -20,7 +21,8 @@ import {
 import {
   bboxOf,
   centroidOf,
-  minAreaRect,
+  convexHull,
+  orientedRect,
   round,
   roundPoints,
   toLocalFrame,
@@ -38,6 +40,12 @@ const PROJECT = path.resolve(HERE, '..')
 
 const SOURCE = process.env.FLOORPLAN_SOURCE
   ?? 'G:/My Drive/_Personal/Spittastr-Grundris/Spittastr.3dm'
+
+// Drop a .dwg in here and re-run `npm run extract` to add a piece of furniture.
+// Each file becomes one item, named from its filename.
+const FURNITURE_DIR = process.env.FURNITURE_DIR
+  ?? 'G:/My Drive/_Personal/Spittastr-Grundris/Furniture'
+
 const OUT = path.join(PROJECT, 'src', 'data', 'floorplan.json')
 
 // The file header claims millimetres, but the apartment measures ~6.2 x 14.9
@@ -52,6 +60,19 @@ const LAYER_ROLES = {
   windows: 'windows',
   furniture: 'builtins',
   'majds furniture': 'movable',
+}
+
+// Filenames are not always tidy. Add an entry here rather than renaming the
+// source file, so the drawing and the app can't drift apart.
+const LABEL_OVERRIDES = {
+  'big tabl': 'Big Table',
+}
+
+function labelFromFilename(file) {
+  const stem = path.basename(file, path.extname(file)).trim()
+  const override = LABEL_OVERRIDES[stem.toLowerCase()]
+  if (override) return override
+  return stem.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 const slugCounts = new Map()
@@ -85,7 +106,7 @@ function main() {
     process.exit(1)
   }
 
-  return readRhino(SOURCE).then((model) => {
+  return readRhino(SOURCE).then(async (model) => {
     const buckets = { walls: [], windows: [], builtins: [], movable: [] }
     const labels = []
     const skippedLayers = new Set()
@@ -144,10 +165,34 @@ function main() {
     // --- Movable furniture ----------------------------------------------
     // Each piece is a closed curve paired with a text label. Pair by nearest
     // label centroid, consuming each label once.
+
+    // The drawing also contains a rectangle enclosing the whole staging area —
+    // an annotation, not a piece. Drop any curve that wraps two or more others:
+    // besides adding a phantom 6.5 x 3.3 m "piece", such a frame contains
+    // several labels and can otherwise steal a name from real furniture.
+    const movableBoxes = buckets.movable.map((c) => bboxOf(c.points))
+    const encloses = (a, b) =>
+      a.minX <= b.minX && a.maxX >= b.maxX && a.minY <= b.minY && a.maxY >= b.maxY
+
+    const movable = buckets.movable.filter((curve, i) => {
+      const wrapped = movableBoxes.filter(
+        (other, j) => j !== i && encloses(movableBoxes[i], other),
+      ).length
+      if (wrapped >= 2) {
+        const b = movableBoxes[i]
+        console.log(
+          `  · ignoring a ${round(b.maxX - b.minX, 2)} x ${round(b.maxY - b.minY, 2)} m frame ` +
+          `around ${wrapped} pieces`,
+        )
+        return false
+      }
+      return true
+    })
+
     const unclaimed = [...labels]
     const catalog = []
 
-    for (const curve of buckets.movable) {
+    for (const curve of movable) {
       const centre = centroidOf(curve.points)
       const box = bboxOf(curve.points)
 
@@ -169,7 +214,7 @@ function main() {
 
       // Derive the piece's own axes so rotation is about its true orientation
       // rather than the world axes.
-      const rect = minAreaRect(curve.points)
+      const rect = orientedRect(curve.points)
       const local = toLocalFrame(curve.points, centre, rect.angle)
 
       const placed =
@@ -186,6 +231,60 @@ function main() {
         position: [round(centre[0], 4), round(centre[1], 4)],
         rotation: round((rect.angle * 180) / Math.PI, 2),
         placed,
+      })
+    }
+
+    // --- Furniture from individual DWG files ------------------------------
+    // Each .dwg in FURNITURE_DIR contributes one piece. These drawings have no
+    // text label, so the name comes from the filename.
+    const dwgFiles = fs.existsSync(FURNITURE_DIR)
+      ? fs.readdirSync(FURNITURE_DIR).filter((f) => f.toLowerCase().endsWith('.dwg')).sort()
+      : []
+
+    for (const file of dwgFiles) {
+      let dwgModel
+      try {
+        dwgModel = await readDwg(path.join(FURNITURE_DIR, file))
+      } catch (err) {
+        console.warn(`  ! skipped ${file}: ${err.message}`)
+        continue
+      }
+
+      const curves = dwgModel.objects.filter((o) => o.kind === 'curve')
+      if (!curves.length) {
+        console.warn(`  ! skipped ${file}: no geometry found`)
+        continue
+      }
+
+      const label = dwgModel.objects.find((o) => o.kind === 'text' && o.text)?.text
+        ?? labelFromFilename(file)
+
+      // A piece is usually drawn as several polylines (a top, legs, fold-out
+      // leaves). The silhouette that matters for snapping and collisions is
+      // their combined outer boundary, so hull all the points together rather
+      // than picking one polyline.
+      const outline = convexHull(curves.flatMap((c) => c.points))
+      const centre = centroidOf(outline)
+      const rect = orientedRect(outline)
+      const local = toLocalFrame(outline, centre, rect.angle)
+
+      const layer = curves[0].layer ?? ''
+      const owner = /laura/i.test(layer) ? 'laura' : 'majd'
+
+      catalog.push({
+        id: slugify(label),
+        label,
+        owner,
+        footprint: roundPoints(local),
+        size: [round(rect.width, 3), round(rect.height, 3)],
+        height: heightFor(label),
+        heightAssumed: true, // these drawings are 2D only
+        position: [round(centre[0], 4), round(centre[1], 4)],
+        rotation: round((rect.angle * 180) / Math.PI, 2),
+        placed:
+          centre[0] >= planExtent.minX && centre[0] <= planExtent.maxX &&
+          centre[1] >= planExtent.minY && centre[1] <= planExtent.maxY,
+        source: file,
       })
     }
 

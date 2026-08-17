@@ -1649,6 +1649,50 @@
       "placed": true
     },
     {
+      "id": "big-table",
+      "label": "Big Table",
+      "owner": "majd",
+      "footprint": [
+        [
+          -0.9,
+          0
+        ],
+        [
+          -0.35,
+          -1
+        ],
+        [
+          0.35,
+          -1
+        ],
+        [
+          0.9,
+          0
+        ],
+        [
+          0.35,
+          1
+        ],
+        [
+          -0.35,
+          1
+        ]
+      ],
+      "size": [
+        1.8,
+        2
+      ],
+      "height": 0.74,
+      "heightAssumed": true,
+      "position": [
+        9.6836,
+        19.0151
+      ],
+      "rotation": 0,
+      "placed": true,
+      "source": "big tabl.dwg"
+    },
+    {
       "id": "kommode-wohnzimmer",
       "label": "Kommode Wohnzimmer",
       "owner": "laura",

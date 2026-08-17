@@ -113,6 +113,29 @@ export function minAreaRect(points) {
   return { width: best.width, height: best.height, angle: best.angle }
 }
 
+/**
+ * Choose the rectangle to treat as a piece's own frame.
+ *
+ * The minimum-area rectangle is the mathematically tightest fit, but for a
+ * shape like a table with pointed end-leaves it comes out rotated ~37°, which
+ * would stand the piece at an angle it was never drawn at. Furniture is
+ * almost always drawn square to the plan, so prefer the axis-aligned box and
+ * only accept a rotated one when it is a clearly better fit.
+ */
+export function orientedRect(points, tolerance = 0.9) {
+  const min = minAreaRect(points)
+  const bb = bboxOf(points)
+  const boxW = bb.maxX - bb.minX
+  const boxH = bb.maxY - bb.minY
+  const boxArea = boxW * boxH
+  const minArea = min.width * min.height
+
+  if (boxArea > 0 && minArea >= boxArea * tolerance) {
+    return { width: boxW, height: boxH, angle: 0 }
+  }
+  return min
+}
+
 // Express `points` in the local frame of a rectangle centred at `origin`
 // and rotated by `angle` radians.
 export function toLocalFrame(points, origin, angle) {

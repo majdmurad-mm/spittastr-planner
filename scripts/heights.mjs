@@ -13,6 +13,7 @@ export const FURNITURE_HEIGHTS = {
   'kallax 4x4': 1.47,
   'kallax 2x2': 0.77,
   table: 0.74,
+  'big table': 0.74,
   bed: 0.55,
   chair: 0.85,
   desk: 0.73,
